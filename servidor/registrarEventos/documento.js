@@ -3,7 +3,7 @@ import {
   encontrarDocumento,
   excluirDocumento,
 } from "../db/documentosDb.js";
-import { adicionarConexao, obterUsuariosNoDocumento, removerConexao } from "../utils/conexoesDocumentos.js";
+import { adicionarConexao, encontrarConexao, obterUsuariosNoDocumento, removerConexao } from "../utils/conexoesDocumentos.js";
 
 function registrarEventosDocumento(socket, io) {
   socket.on("selecionar_documento", async ({ nomeDocumento, nomeUsuario }, devolverTexto) => {
@@ -11,14 +11,25 @@ function registrarEventosDocumento(socket, io) {
     const documento = await encontrarDocumento(nomeDocumento);
     
     if (documento) {
-      socket.join(nomeDocumento);
+      const conexaoEncontrada = encontrarConexao(nomeDocumento, nomeUsuario);
+      if(!conexaoEncontrada){
+        socket.join(nomeDocumento);
 
-      adicionarConexao({ nomeDocumento,nomeUsuario });
+        adicionarConexao({ nomeDocumento,nomeUsuario });
 
-      const usuariosNoDocumento = obterUsuariosNoDocumento(nomeDocumento)
-      console.log(usuariosNoDocumento);
-      io.to(nomeDocumento).emit("usuarios_no_documento", usuariosNoDocumento);
-      devolverTexto(documento.texto);
+        socket.data = {
+          usuarioEntrou: true,
+        };
+  
+        const usuariosNoDocumento = obterUsuariosNoDocumento(nomeDocumento)
+        console.log(usuariosNoDocumento);
+        io.to(nomeDocumento).emit("usuarios_no_documento", usuariosNoDocumento);
+        devolverTexto(documento.texto);
+      }else{
+        socket.emit("usuario_ja_no_documento");
+      }
+
+
     }
     socket.on("texto_editor", async ({ texto, nomeDocumento }) => {
       const atualizacao = await atualizaDocumento(nomeDocumento, texto);
@@ -35,11 +46,15 @@ function registrarEventosDocumento(socket, io) {
         io.emit("excluir_documento_sucesso", nome);
       }
     });
+
     socket.on("disconnect",()=>{
-      removerConexao(nomeDocumento,nomeUsuario);
-      const usuariosNoDocumento = obterUsuariosNoDocumento(nomeDocumento)
-      console.log(usuariosNoDocumento);
-      io.to(nomeDocumento).emit("usuarios_no_documento", usuariosNoDocumento);
+      if(socket.data.usuarioEntrou){
+        
+        removerConexao(nomeDocumento,nomeUsuario);
+        const usuariosNoDocumento = obterUsuariosNoDocumento(nomeDocumento)
+        console.log(usuariosNoDocumento);
+        io.to(nomeDocumento).emit("usuarios_no_documento", usuariosNoDocumento);
+      }
       
     });
   }
